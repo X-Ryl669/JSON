@@ -8,8 +8,8 @@ It was developped to fit a memory & flash constrained microcontroller, so many d
 It's designed for stream parsing (that is, there is no limit to parse end of "logical end").
 It checks the JSON syntax, but accept few invalid constructions:
 
- - `{}{}` : it'll stop on the first object declaration but not return an error since it hasn't seen the other object.
- - `[123.E232-23++34.24...2424]`: Since number are not converted, this will be accepted as an array containing a number.
+ - `{}{}` : it'll stop on the first object declaration but not return an error since it hasn't seen the other object yet.
+ - `[123.E232-23++34.24...2424]`: Since number are not converted, this will be accepted as an array containing a number. You'll notice the error if you try to convert the number (if you either do that).
  
 By default, it does not modify its input and work-in-place.
 It does not convert/unescape strings unless you `#define UnescapeJSON` (in that case, the input text is modified to store 0 at strings' ends).
@@ -25,6 +25,8 @@ Such identifier is limited to 4095 possible values (before wrap around).
 
 It should be very fast to parse and with minimal code size.
 (On my machine complete code compiles to less than 2.5kB)
+
+It's able to resume parsing on a new received buffer so you don't need to store the complete JSON stream in memory at anytime.
 
 
 ## Partial parsing
