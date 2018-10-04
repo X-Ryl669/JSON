@@ -10,51 +10,51 @@ static bool isEnd(char c)
 #ifdef UnescapeJSON
 ROString JSON::Token::unescape(char * buf)
 {
-	if (type != String && type != Key) return ROString();
+    if (type != String && type != Key) return ROString();
 
     // Already decoded ?
-	if (buf[start-1] == '\0') return ROString(&buf[start]); // The actual string size is unknown here, so need to scan for 0
-	if (buf[start-1] == '!') return ROString(); // Error
+    if (buf[start-1] == '\0') return ROString(&buf[start]); // The actual string size is unknown here, so need to scan for 0
+    if (buf[start-1] == '!') return ROString(); // Error
 
-	// Decode the string... it is valid utf8... so no worries
-	char * dst = &buf[start];
-	for (const char * src = dst, *last = &buf[end]; src != last; src++)
+    // Decode the string... it is valid utf8... so no worries
+    char * dst = &buf[start];
+    for (const char * src = dst, *last = &buf[end]; src != last; src++)
     {
-		if (*src & 0x80)
-        {	// Extract utf8 as-is
-			while (*src & 0x80)	*(dst++) = *(src++);
-			continue;
-		}
+        if (*src & 0x80)
+        {   // Extract utf8 as-is
+            while (*src & 0x80)	*(dst++) = *(src++);
+            continue;
+        }
 
         // This can not happen unescaped
-		if (*src == '"') { buf[start - 1] = '!'; return ROString(); }
+        if (*src == '"') { buf[start - 1] = '!'; return ROString(); }
 
-		if (*src == '\\')
+        if (*src == '\\')
         {
             // Unicode char are not converted, but since they are not converted either when being served, it should be safe.
-			switch (*(src+1))
+            switch (*(src+1))
             {
-			case 'b': *(dst++) = '\b'; break;
-			case 'f': *(dst++) = '\f'; break;
-			case 'n': *(dst++) = '\n'; break;
-			case 'r': *(dst++) = '\r'; break;
-			case 't': *(dst++) = '\t'; break;
+                case 'b': *(dst++) = '\b'; break;
+                case 'f': *(dst++) = '\f'; break;
+                case 'n': *(dst++) = '\n'; break;
+                case 'r': *(dst++) = '\r'; break;
+                case 't': *(dst++) = '\t'; break;
 
-			//decode next (single byte utf8)
-			default: *(dst++) = *(src + 1); break;
-		    }
+                // Decode next as if it was unescaped
+                default: *(dst++) = *(src + 1); break;
+            }
 
-			src++;
-			continue;
-		}
+            src++;
+            continue;
+        }
 
-		*(dst++) = *src;
-	}
-	*(dst++) = '\0';
+    	*(dst++) = *src;
+    }
+    *(dst++) = '\0';
 
-	buf[start - 1] = '\0';
-//	buf[end] = '\0';
-	return ROString(&buf[start], (size_t)(dst - &buf[start]));
+    buf[start - 1] = '\0';
+    //	buf[end] = '\0';
+    return ROString(&buf[start], (size_t)(dst - &buf[start]));
 }
 #endif
 
@@ -343,7 +343,7 @@ IndexType JSON::partialParse(char * in, IndexType & len, Token * tokens, const I
                 super = p-1;
             else if (tokens[p - 1].end <= 0)
             {   // The last token was incomplete, so we'll have to reparse it
-                pos = tokens[p - 1].start - offset; //(tokens[p - 1].type  == Token::String || tokens[p - 1].type == Token::Key);
+                pos = tokens[p - 1].start - offset;
                 next--;
             }
         } else
