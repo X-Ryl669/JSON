@@ -50,10 +50,9 @@ ROString JSON::Token::unescape(char * buf)
 
     	*(dst++) = *src;
     }
-    *(dst++) = '\0';
+    *dst = '\0';
 
     buf[start - 1] = '\0';
-    //	buf[end] = '\0';
     return ROString(&buf[start], (size_t)(dst - &buf[start]));
 }
 #endif
