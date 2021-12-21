@@ -46,6 +46,15 @@ the token stream will contains the last key the (interrupted and resumed) value 
 When processing the token stream, you are ensured to always have a key before a value in an object.
 Since object and arrays are identified, you can also figure out in which object the key/value refers to by remembering the container's ID. Try to accumulate as much data as possible before calling partialParsing, since this rewriting is computation expensive, so avoid to do that for each byte received.
 
+## SAX parsing
+In this case, you don't even need to allocate a token array at all. You'll call parseOne in a loop, each iteration mutating the given token, until it returns `Finished`.
+Using SAX parsing is like receiving parsing events (like entering an object, receiving a key, a value, etc...). 
+Please refer to `SAXState` enumeration for the different event state.
+The downside however, is that you don't know the number of elements at all (it's not tracked anymore) and the hierarchy of objects (you have to
+keep track of this by yourself). So the `token.parent` is useless, and it was re-used to store the `SAXState` event type instead.
+Also, you need to maintain a stack of the parent object's positions in order for the parser to validate the validity of the input JSON.
+Please refer to `JSONSaxTest.cpp` for an example usage of this API. 
+
 
 ## Implementation limits
 The default implementation limits input JSON size to signed 16 bits (32768 bytes), and less than 4095 embedded objects/arrays.
