@@ -6,10 +6,97 @@
 #endif
 
 #ifndef IndexType
+  // Must be signed
   #define IndexType int16
 #endif
 
 #pragma pack(push, 1)
+
+/** A generic implementation of a parsed token. Supports almost unlimited JSON size */
+template <typename T>
+struct TokenT
+{
+    /** And its type */
+    enum Type
+    {
+        Undefined    = 0,
+        Object       = 1,
+        Array        = 2,
+        Key          = 3,
+        String       = 4,
+        Null         = 5,
+        True         = 6,
+        False        = 7,
+        Number       = 8,
+    };
+    /** The token id (only valid for container, like objects and array) */
+    T           id;
+    /** The token type */
+    Type        type;
+    /** The token parent index or state if using parseOne */
+    T           parent;
+    /** The token start position */
+    T           start;
+    union
+    {
+        /** The end position (for primitive values) */
+        T end;
+        /** The number of elements (for objects and array) */
+        T elementCount;
+    };
+    void init(Type type, T parent, T start, T end, T id = 0) {  this->id = id; this->type = type; this->parent = parent; this->start = start; this->end = end; }
+    T changeType(Type type) { this->type = type; return 0; }
+#ifdef UnescapeJSON
+    /** Unescape the string (or key).
+        This modifies the given input buffer to make it a valid zero terminated string */
+    ROString unescape(char * in);
+#endif
+};
+
+/** Specialized version for embedded system limited to JSON size less than 32kB. 
+    The token memory footprint should fit in 64bits/8 bytes only.
+    The hierarchy depth is limited to 4095 recursively embedded objects */
+template <>
+struct TokenT<signed short>
+{
+    /** And its type */
+    enum Type
+    {
+        Undefined    = 0,
+        Object       = 1,
+        Array        = 2,
+        Key          = 3,
+        String       = 4,
+        Null         = 5,
+        True         = 6,
+        False        = 7,
+        Number       = 8,
+    };
+    /** The token id (only valid for container, like objects and array) */
+    unsigned short   id   : 12;
+    /** The token type */
+    unsigned short   type : 4;
+    /** The token parent index or state if using parseOne */
+    signed short   parent;
+    /** The token start position */
+    signed short   start;
+    union
+    {
+        /** The end position (for primitive values) */
+        signed short end;
+        /** The number of elements (for objects and array) */
+        signed short elementCount;
+    };
+    void init(Type type, signed short parent, signed short start, signed short end, signed short id = 0) {  this->id = id; this->type = type; this->parent = parent; this->start = start; this->end = end; }
+    signed short changeType(Type type) { this->type = type; return 0; }
+#ifdef UnescapeJSON
+    /** Unescape the string (or key).
+        This modifies the given input buffer to make it a valid zero terminated string */
+    ROString unescape(char * in);
+#endif
+};
+
+
 /** A SAX like JSON on-the-fly parser with no memory allocation while parsing.
     It's inspired by JSMM for working principle but is completely rewritten for C++
     and support partial parsing.
@@ -109,44 +196,7 @@ struct JSON
         The token stores the type of the element found, its position in the stream, and its relation to the parent container.
         When referring containers, the end position of the container in the stream is not saved, instead the number of child elements is stored
         and an (unique) identifier. */
-    struct Token
-    {
-        /** And its type */
-        enum Type
-        {
-            Undefined    = 0,
-            Object       = 1,
-            Array        = 2,
-            Key          = 3,
-            String       = 4,
-            Null         = 5,
-            True         = 6,
-            False        = 7,
-            Number       = 8,
-        };
-        /** The token id (only valid for container, like objects and array) */
-        unsigned short   id   : 12;
-        /** The token type */
-        unsigned short   type : 4;
-        /** The token parent index or state if using parseOne */
-        IndexType   parent;
-        /** The token start position */
-        IndexType   start;
-        union
-        {
-            /** The end position (for primitive values) */
-            IndexType end;
-            /** The number of elements (for objects and array) */
-            IndexType elementCount;
-        };
-        void init(Type type, IndexType parent, IndexType start, IndexType end, IndexType id = 0) {  this->id = id; this->type = type; this->parent = parent; this->start = start; this->end = end; }
-        IndexType changeType(Type type) { this->type = type; return 0; }
-#ifdef UnescapeJSON
-        /** Unescape the string (or key).
-            This modifies the given input buffer to make it a valid zero terminated string */
-        ROString unescape(char * in);
-#endif
-    };
+    typedef TokenT<IndexType> Token;
 
     /** The current position */
     IndexType pos;
