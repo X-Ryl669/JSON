@@ -4,7 +4,7 @@
 #include <time.h>
 
 #define IndexType short int
-#include "JSON.hpp"
+#include "../JSON.hpp"
 
 void useTokens(char * buffer, JSON::Token * start, JSON::Token * end)
 {

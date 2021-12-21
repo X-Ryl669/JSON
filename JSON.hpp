@@ -66,7 +66,11 @@
     Writing small JSON is trivial, but it's not the subject of this class.
  
     There is no dependency on STL, and no exceptions either.
-    Only memmove is used in partialParsing for ensuring the previous key is present in the new stream to parse. */
+    Only memmove is used in partialParsing for ensuring the previous key is present in the new stream to parse. 
+    
+    If you only need a SAX parser, that is, you don't want to allocate a token stream beforehand, then you 
+    can call the parseOne method instead. This method will extract one token and return it. You'll call it again until 
+    the first object is done parsing. */
 struct JSON
 {
     /** The invalid position */
@@ -79,15 +83,35 @@ struct JSON
         Invalid             = -2,   //!< Invalid format for the given input
         Starving            = -3,   //!< Not enough data, need to call with more data
         NeedRefill          = -4,   //!< Only when using partialParse, this error tells you to refill the text buffer
+
+        // Only for parseOne
+        OneTokenFound       = 1,
+        SaveSuper           = 2,
+        RestoreSuper        = 3,
+        Finished            = 4,
     };
 
-    /** One of the token that parse & parsePartial function is filling.
+    /** The current SAX state when using parseOne */
+    enum SAXState
+    {
+        Unknown         = -1,
+        EnteringObject  = 0,
+        LeavingObject   = 1,
+        EnteringArray   = 2,
+        LeavingArray    = 3,
+        HadKey          = 4,
+        HadValue        = 5,
+
+        DoneParsing     = 6,
+    };
+
+    /** One of the token that parse & parseOne & parsePartial functions are filling.
         The token stores the type of the element found, its position in the stream, and its relation to the parent container.
         When referring containers, the end position of the container in the stream is not saved, instead the number of child elements is stored
         and an (unique) identifier. */
     struct Token
     {
-        /** And it's type */
+        /** And its type */
         enum Type
         {
             Undefined    = 0,
@@ -104,7 +128,7 @@ struct JSON
         unsigned short   id   : 12;
         /** The token type */
         unsigned short   type : 4;
-        /** The token parent index */
+        /** The token parent index or state if using parseOne */
         IndexType   parent;
         /** The token start position */
         IndexType   start;
@@ -153,12 +177,72 @@ struct JSON
     /** The partial state, if used */
     char    partialState;
 
+    /** Reset the parser to pristine conditions */
+    void reset() { pos = next = 0; super = InvalidPos; lastId = 0; state = 0; partialState = 0; }
+
     /** Construction */
-    JSON() : pos(0), next(0), super(InvalidPos), lastId(0), state(0), partialState(0) {}
+    JSON() { reset(); }
 
     /** Set new source data to parse.
-        If the function starved, you should either feed more data via in, or use the famine method below */
+        If the function starved, you should either feed more data via in, or use the famine method below
+
+        @param in           The text buffer to parse.
+        @param len          On input, contains the size of the text buffer in bytes.
+        @param tokens       The tokens buffer to store into
+        @param tokenCount   The number of tokens in the buffer
+
+        Typical usage is like this:
+        @code
+        const size_t MaxTokenCount = 100;
+        JSON::Token tokens[MaxTokenCount];
+        const char * in = ...;
+        JSON j;
+        JSON::IndexType tokenUsed = j.parse(in, strlen(in), tokens, MaxTokenCount);
+        if (tokenUsed > 0) {
+            // Work with the "tokenUsed" tokens
+        } else { 
+           switch (tokenUsed) {
+               case NotEnoughToken: // Realloc the token stream larger
+               case Invalid: // Bad luck it's invalid JSON, look at j.pos for where it failed
+               case Starving: // Use partialParse or wait until in contains the complete JSON object
+               case NeedRefill: // Used internally by partialParse to tell you to continue filling input buffer
+            }
+        } 
+        @endcode */
     IndexType parse(const char * in, const IndexType len, Token * tokens, const IndexType tokenCount);
+
+    /** Parse a single token from the input stream. 
+        Please don't change the input stream between calls. 
+        @param in           The text buffer to parse.
+        @param len          The size of the text buffer in bytes.
+        @param tokens       The tokens buffer to store into
+        @param tokenCount   The number of tokens in the buffer
+        @param lastSuper    When starting, it should be set to InvalidPos. It's modified while parsing to keep track of the previous super position.
+                            You'll need to create a stack here to store it, each time it's modified, a bit like this:
+        @code
+            std::stack<IndexType> superPos;
+            JSON::Token token;
+            const char * in = ...;
+            JSON j;
+            IndexType lastSuper = InvalidPos;
+            do {
+                IndexType err = j.parseOne(in, strlen(in), token, lastSuper);
+                if (err < 0) handleError(err);
+                // Deal with entering an object or array
+                if (err == SaveSuper)
+                    superPos.push(lastSuper);
+                if (err == RestoreSuper) {
+                    superPos.pop();
+                    lastSuper = superPos.top();
+                }
+
+                // Use the token
+                ...
+            } while (err != Finished);
+        @endcode
+        @warning This method does not fill the parent object/array when finding a child object. It does not set the elementsCount, nor the token.id */
+    IndexType parseOne(const char * in, const IndexType len, Token & token, IndexType & lastSuper);
+
 #ifndef SkipJSONPartialParsing
     /** Get the number of used (and valid) tokens so far.
         The idea is that you have not received as many data as required to finish parsing, yet,

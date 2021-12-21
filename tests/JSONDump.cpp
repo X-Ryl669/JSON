@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 #define IndexType short int
-#include "JSON.hpp"
+#include "../JSON.hpp"
 
 
 int main(int argc, char ** argv)

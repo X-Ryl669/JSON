@@ -274,6 +274,105 @@ IndexType JSON::parse(const char * in, const IndexType len, Token * tokens, cons
     return rememberLastError(Starving);
 }
 
+IndexType JSON::parseOne(const char * in, const IndexType len, Token & token, IndexType & lastSuper)
+{
+    IndexType tk;
+    char c = 0;
+    bool skip = false;
+
+    if (pos == 0) { next = InvalidPos; lastSuper = InvalidPos; }
+
+    if (pos >= len)        return rememberLastError(Starving);
+    for (; pos < len; pos++) 
+    {
+        c = in[pos];
+
+        switch(c)
+        {
+        case '\0': return rememberLastError(Invalid);
+
+        case '{':
+        case '[':
+            if (state != ExpectValue)       return rememberLastError(Invalid);
+
+            token.init(c == '{' ? Token::Object : Token::Array, super, pos, 0, ++lastId);
+
+            lastSuper = super; // Play musical chair to deal with delay in saving
+            super = pos;
+            state = c == '{' ? ExpectKey : ExpectValue;
+            pos++;
+            token.parent = c == '{' ? EnteringObject : EnteringArray;
+            return rememberLastError(SaveSuper);
+
+        case '}':
+        case ']':
+            if (super == InvalidPos)        return rememberLastError(Invalid);
+            if ((in[super] == '{' && c == ']')  || (in[super] == '[' && c == '}'))
+                return rememberLastError(Invalid);
+
+            token.start = super;
+            token.type = c == '}' ? Token::Object : Token::Array;
+            token.parent = c == '}' ? LeavingObject : LeavingArray;
+            token.end = pos;
+
+            super = lastSuper;
+
+            if (lastSuper == InvalidPos)        return rememberLastError(Finished);
+            state = ExpectComma;
+            pos++;
+            return rememberLastError(RestoreSuper);
+
+        case '"':
+            if (state != ExpectValue && state != ExpectKey)  return rememberLastError(Invalid);
+
+            token.init(state == ExpectKey ? Token::Key : Token::String, super, ++pos, 0);
+
+            tk = parseString(in, len, token);
+            if (tk != 0)                    return rememberLastError(tk);
+
+            if (state == ExpectKey)         state = ExpectColon;
+            else if (state == ExpectValue)  state = ExpectComma;
+
+            token.parent = state == ExpectColon ? HadKey : HadValue;
+            break;
+        case ',':
+            if (state != ExpectComma)       return rememberLastError(Invalid);
+            if (super == InvalidPos)        return rememberLastError(Invalid);
+
+            state = in[super] == '{' ? ExpectKey : ExpectValue;
+            skip = true;
+            break;
+        case ':':
+            if (state != ExpectColon)       return rememberLastError(Invalid);
+            state = ExpectValue;
+            skip = true;
+            break;
+            // Ignore whitespace
+        case '\t':
+        case '\n':
+        case ' ':
+            skip = true;
+            break;
+        default:
+            if (state != ExpectValue)       return rememberLastError(Invalid);
+            
+            token.init(Token::Number, super, pos, 0); // Set number by default and fix up if not a number
+            tk = parsePrimitive(in, len, token);
+            if (tk != 0)                    return rememberLastError(tk);
+
+            state = ExpectComma;
+            token.parent = HadValue;
+            break;
+        }
+        if (skip) { skip = false; continue; }
+        
+        pos++;
+        return rememberLastError(OneTokenFound);
+    }
+    return rememberLastError(Starving);
+}
+
+
 #ifndef SkipJSONPartialParsing
 IndexType JSON::partialParse(char * in, IndexType & len, Token * tokens, const IndexType tokenCount, IndexType & lastTokenPos)
 {
