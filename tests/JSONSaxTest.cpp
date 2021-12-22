@@ -4,8 +4,10 @@
 #include <time.h>
 #include <stack>
 
-#define IndexType short int
 #include "../JSON.hpp"
+
+typedef short int IndexType;
+typedef JSONT<IndexType> JSON;
 
 void useTokens(char * buffer, JSON::Token & t)
 {

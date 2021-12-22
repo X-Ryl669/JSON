@@ -5,10 +5,6 @@
 #include "ROString.hpp"
 #endif
 
-#ifndef IndexType
-  // Must be signed
-  #define IndexType int16
-#endif
 
 #pragma pack(push, 1)
 
@@ -157,8 +153,11 @@ struct TokenT<signed short>
     
     If you only need a SAX parser, that is, you don't want to allocate a token stream beforehand, then you 
     can call the parseOne method instead. This method will extract one token and return it. You'll call it again until 
-    the first object is done parsing. */
-struct JSON
+    the first object is done parsing. 
+    
+    @param IndexType    Must be signed */
+template <typename IndexType>
+struct JSONT
 {
     /** The invalid position */
     enum { InvalidPos = (IndexType)-1 };
@@ -231,7 +230,7 @@ struct JSON
     void reset() { pos = next = 0; super = InvalidPos; lastId = 0; state = 0; partialState = 0; }
 
     /** Construction */
-    JSON() { reset(); }
+    JSONT() { reset(); }
 
     /** Set new source data to parse.
         If the function starved, you should either feed more data via in, or use the famine method below
@@ -355,5 +354,6 @@ private:
 };
 #pragma pack(pop)
 
+#include "JSON.tpp"
 
 #endif
