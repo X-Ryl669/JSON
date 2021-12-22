@@ -156,9 +156,10 @@ struct TokenT<signed short>
     the first object is done parsing. 
     
     @param IndexType    Must be signed */
-template <typename IndexType>
+template <typename IndexTypeT>
 struct JSONT
 {
+    typedef IndexTypeT IndexType;
     /** The invalid position */
     enum { InvalidPos = (IndexType)-1 };
 
