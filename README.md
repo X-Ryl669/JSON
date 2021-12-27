@@ -28,6 +28,8 @@ It should be very fast to parse and with minimal code size.
 
 It's able to resume parsing on a new received buffer so you don't need to store the complete JSON stream in memory at anytime.
 
+It accepts read only input buffer, so it can work on memory mapped flash (on embedded system), without a heap.
+This usually saves a lot of precious heap space required by competing JSON parser.
 
 ## Partial parsing
 It also supports (optional) partial parsing.
@@ -54,6 +56,7 @@ Please refer to `SAXState` enumeration for the different event's states.
 
 The downside however, is that you don't know the number of elements at all (it's not tracked anymore) and the hierarchy of objects (you have to
 keep track of this by yourself). So the `token.parent` is useless, and it was re-used to store the `SAXState` event type instead.
+You can call `getCurrentContainerCount` to parse the buffer upon entering a container, if absolutely required.
 
 Also, you need to maintain a stack of the parent object's positions in order for the parser to validate the validity of the input JSON.
 Please refer to `JSONSaxTest.cpp` for an example usage of this API.
@@ -62,7 +65,7 @@ Please refer to `JSONSaxTest.cpp` for an example usage of this API.
 
 ## Implementation limits
 The default implementation limits input JSON size to signed 16 bits (32768 bytes), and less than 4095 embedded objects/arrays.
-If you intend to parse more than that, you'll need to `#define IndexType` to a larger **signed** type.
+If you intend to parse more than that, you'll need to use to a larger **signed** type for the template parameter.
 The Token's size is, by default, 8 bytes long. Using signed 32 bits int for the IndexType will double it's size.
 The parser memory size is 10 bytes by default. It requires less than a hundred bytes of stack space.
 The code is very clean and small (less than 300 lines of code for the definition)
@@ -76,4 +79,9 @@ There is no dependency on STL, and no exceptions either.
 Only `memmove` is used in partialParsing for ensuring the previous key is present in the new stream to parse.
 
 ## Requirements
-Only `JSON.hpp` and `JSON.cpp` is required, the other files are used for testing the code. The code is using a MIT license.
+Only `JSON.hpp` and `JSON.tpp` is required, the other files are used for testing the code. The code is using a MIT license.
+
+## Speed
+This parser is not optimized for speed. There is no SIMD parsing like some competing parsers. 
+However, since its API is very simple, the client code is usually a lot smaller and easier to get right.
+It's faster than JSMM, but probably slower than RapidJSON. 

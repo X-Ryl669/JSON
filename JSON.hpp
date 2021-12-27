@@ -29,8 +29,13 @@ struct TokenT
     T           id;
     /** The token type */
     Type        type;
-    /** The token parent index or state if using parseOne */
-    T           parent;
+    union
+    {
+        /** The token parent index or state if using parseOne */
+        T       parent;
+        /** When using the SAX parser, contains the state (refer to JSON::SAXState) for value */
+        T       state;
+    };
     /** The token start position */
     T           start;
     union
@@ -72,8 +77,14 @@ struct TokenT<signed short>
     unsigned short   id   : 12;
     /** The token type */
     unsigned short   type : 4;
-    /** The token parent index or state if using parseOne */
-    signed short   parent;
+    
+    union
+    {
+        /** The token parent index or state if using parseOne */
+        signed short       parent;
+        /** When using the SAX parser, contains the state (refer to JSON::SAXState) for value */
+        signed short       state;
+    };    
     /** The token start position */
     signed short   start;
     union
@@ -292,6 +303,19 @@ struct JSONT
         @endcode
         @warning This method does not fill the parent object/array when finding a child object. It does not set the elementsCount, nor the token.id */
     IndexType parseOne(const char * in, const IndexType len, Token & token, IndexType & lastSuper);
+
+    /** When using the SAX parser, it's not usually possible to know the number of element in an array or object 
+        before parsing it completely. This leads to suboptimal client code that must rely on dynamic structures (like 
+        linked list or dynamic array) that stresses the heap allocator (an 8 bytes list's item usually hides at least 8 bytes
+        of overhead in the heap algorithm to track the allocation).
+        So to ease the allocation of a single array sized for the element counts, we provide this method that counts the 
+        elements. It swaps parsing time for convenience (since the data will be parsed twice, but with a faster algorithm).  
+        
+        It does modify the current parsing state and position. 
+        It only work if the parser is in an 'Entering' state (else, returns 0).
+        
+        This is a O(N) operation (up to the end of the container) so try to limit this to small objects */
+    IndexType getCurrentContainerCount(const char * in, const IndexType len, const Token & token);
 
 #ifndef SkipJSONPartialParsing
     /** Get the number of used (and valid) tokens so far.

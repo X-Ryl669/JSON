@@ -279,6 +279,62 @@ IndexType JSONT<IndexType>::parse(const char * in, const IndexType len, Token * 
 }
 
 template <typename IndexType>
+IndexType JSONT<IndexType>::getCurrentContainerCount(const char * in, const IndexType len, const Token & token)
+{
+    bool isObj = token.state == EnteringObject, isArr = token.state == EnteringArray;
+    if (!isObj && !isArr) return 0;
+    IndexType count = 0;
+
+    IndexType bracketCount = isArr, blockCount = isObj;
+    // The algorithm here is quite simple 
+    // Depending on the current token state (array or object), we count the number of bracket or block
+    // until we exit the current object or array. We skip everything while in the string mode.
+    bool inTxt = false, escaped = false;
+    for (IndexType i = pos; i < len; i++)
+    {
+        char c = in[i];
+        if (c == ' ' || c == '\n' || c == '\r' || c == '\t') {
+            continue;
+        } else if (inTxt) {
+            if (!escaped && c == '"') { 
+                inTxt = false;
+            }
+            else if (!escaped && c == '\\') {
+                escaped = true;
+            }
+            else if (escaped) {
+                escaped = false;
+            }
+        } else {
+            if (isObj && blockCount == 1 && !count) {
+                count++; // It's a value or a key, anyway, let's count it
+            } else if (isArr && bracketCount == 1 && !count) {
+                count++; // It's a value or a key, anyway, let's count it
+            }
+
+            if (c == '"') {
+                inTxt = true; 
+            } else if (c == '{') {
+                blockCount++;
+            } else if (c == '}') {
+                blockCount--;
+                if (blockCount == 0 && isObj) return count;
+            } else if (c == '[') {
+                bracketCount++;
+            } else if (c == ']') {
+                bracketCount--;
+                if (bracketCount == 0 && isArr) return count;
+            } else if (c == ',') {
+                if (isObj && blockCount == 1 && bracketCount == 0) count++;
+                else if (isArr && bracketCount == 1 && blockCount == 0) count++;
+            } 
+        }
+    }
+    return count;
+}
+
+
+template <typename IndexType>
 IndexType JSONT<IndexType>::parseOne(const char * in, const IndexType len, Token & token, IndexType & lastSuper)
 {
     IndexType tk;
@@ -306,7 +362,7 @@ IndexType JSONT<IndexType>::parseOne(const char * in, const IndexType len, Token
             super = pos;
             state = c == '{' ? ExpectKey : ExpectValue;
             pos++;
-            token.parent = c == '{' ? EnteringObject : EnteringArray;
+            token.state = c == '{' ? EnteringObject : EnteringArray;
             return rememberLastError(SaveSuper);
 
         case '}':
@@ -317,7 +373,7 @@ IndexType JSONT<IndexType>::parseOne(const char * in, const IndexType len, Token
 
             token.start = super;
             token.type = c == '}' ? Token::Object : Token::Array;
-            token.parent = c == '}' ? LeavingObject : LeavingArray;
+            token.state = c == '}' ? LeavingObject : LeavingArray;
             token.end = pos;
 
             super = lastSuper;
@@ -338,7 +394,7 @@ IndexType JSONT<IndexType>::parseOne(const char * in, const IndexType len, Token
             if (state == ExpectKey)         state = ExpectColon;
             else if (state == ExpectValue)  state = ExpectComma;
 
-            token.parent = state == ExpectColon ? HadKey : HadValue;
+            token.state = state == ExpectColon ? HadKey : HadValue;
             break;
         case ',':
             if (state != ExpectComma)       return rememberLastError(Invalid);
@@ -366,7 +422,7 @@ IndexType JSONT<IndexType>::parseOne(const char * in, const IndexType len, Token
             if (tk != 0)                    return rememberLastError(tk);
 
             state = ExpectComma;
-            token.parent = HadValue;
+            token.state = HadValue;
             break;
         }
         if (skip) { skip = false; continue; }

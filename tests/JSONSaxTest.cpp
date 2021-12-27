@@ -9,21 +9,25 @@
 typedef short int IndexType;
 typedef JSONT<IndexType> JSON;
 
-void useTokens(char * buffer, JSON::Token & t)
+void useTokens(JSON & a, char * buffer, JSON::Token & t)
 {
-    static IndexType lastParent = JSON::InvalidPos;
     static int level = 0;
     const char * type[] = {"Undefined", "Object", "Array", "Key", "String", "Null", "True", "False", "Number"};
     const char * state[] = {"Unknown", "EnteringObject", "LeavingObject", "EnteringArray", "LeavingArray", "HadKey", "HadValue", "DoneParsing"};
     int i = 0;
-    if (t.parent == JSON::EnteringObject || t.parent == JSON::EnteringArray) level++;
-    if (t.parent == JSON::LeavingObject || t.parent == JSON::LeavingArray) level--;
+    IndexType count = 0;
+    if (t.state == JSON::EnteringObject || t.state == JSON::EnteringArray) {
+        count = a.getCurrentContainerCount(buffer, strlen(buffer), t);
+    }
     
-    fprintf(stdout, "%*s%d. Token[%s], state[%s], start at %d", level, "", i, type[t.type], state[t.parent + 1], t.start);
+    fprintf(stdout, "%*s%d. Token[%s], state[%s], start at %d", level, "", i, type[t.type], state[t.state + 1], t.start);
     if (t.type == JSON::Token::Object || t.type == JSON::Token::Array)
-        fprintf(stdout, " (id:%u) end at %d:\n", (unsigned)t.id, t.end);
+        fprintf(stdout, " (id:%u) end at %d (count: %d):\n", (unsigned)t.id, t.end, count);
     else
         fprintf(stdout, " with value: %.*s\n", t.end - t.start, &buffer[t.start]);
+
+    if (t.state == JSON::EnteringObject || t.state == JSON::EnteringArray) level++;
+    if (t.state == JSON::LeavingObject || t.state == JSON::LeavingArray) level--;
 }
 
 int handleError(JSON & a, IndexType err)
@@ -53,7 +57,7 @@ int runTest(char * buffer, IndexType realLen, bool verbose)
         }
 
         // Use the token
-        if (verbose) useTokens(buffer, token);
+        if (verbose) useTokens(a, buffer, token);
         if (err == JSON::Finished) break;
     }
     return 0;
