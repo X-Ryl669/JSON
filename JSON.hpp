@@ -311,10 +311,11 @@ struct JSONT
         So to ease the allocation of a single array sized for the element counts, we provide this method that counts the 
         elements. It swaps parsing time for convenience (since the data will be parsed twice, but with a faster algorithm).  
         
-        It does modify the current parsing state and position. 
+        It doesn't modify the current parsing state and position. 
         It only work if the parser is in an 'Entering' state (else, returns 0).
         
-        This is a O(N) operation (up to the end of the container) so try to limit this to small objects */
+        This is a O(N) operation (up to the end of the container, so it can be as large as the whole file if you count the 
+        members of the root object) so try to limit this to small objects for efficiency */
     IndexType getCurrentContainerCount(const char * in, const IndexType len, const Token & token);
 
 #ifndef SkipJSONPartialParsing
