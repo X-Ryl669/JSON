@@ -5,6 +5,7 @@
 // So, provide a simple read only string class that than be reused in your code
 #include <cstdlib>
 #include <cstring>
+#include <cstdint>
 
 /** Compute a string hash at compile time */
 unsigned constexpr constHash(char const * input)
@@ -413,8 +414,11 @@ public:
     /** The basic conversion operators */
     operator int() const { return (int)strtol(data, 0, 0); }
 
+    // Prevent ambiguous overload on 32-bits systems where size_t is 32bits
+#if UINT32_WIDTH != SIZE_WIDTH
     /** The basic conversion operators */
     operator size_t() const { return (size_t)strtoul(data, 0, 0); }
+#endif
     /** The basic conversion operators */
     operator uint32() const { return (uint32)strtoul(data, 0, 0); }
 
