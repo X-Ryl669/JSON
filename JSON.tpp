@@ -1,5 +1,3 @@
-#include <string.h>
-
 
 static bool isEnd(char c)
 {
@@ -7,18 +5,53 @@ static bool isEnd(char c)
 }
 
 #ifdef UnescapeJSON
-template <typename IndexType>
-ROString TokenT<IndexType>::unescape(char * buf)
+#ifdef UnescapeUnicode
+static bool isHex(char c)
 {
-    if (type != String && type != Key) return ROString();
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
 
+static char fromHex(char c)
+{   // '0' to '9' is 0x30 to 0x39, 'a' to 'f' is 0x41 to 0x46, 'A' to 'F' is 0x61 to 0x66
+    // So the low 4 bits contains the number if < 10 (mask it)
+    // The 6th bit is only set for letters. In that case, their low nibble is offset by 9 to their hex value ('a' 0x41 should be 0x1 + 9, 'F' 0x66 should be 0x6 + 9)
+    return (c & 0xF) + (c >> 6) * 9;
+}
+
+static void toUTF8(uint32_t cp, char * & dst)
+{
+    if (cp <= 0x7F) *(dst++) = (char)cp;
+    else if (cp <= 0x7FF)
+    {
+        *(dst++) = (char)(0xC0 | ((cp >> 6) & 0x1F));
+        *(dst++) = (char)(0x80 | (cp & 0x3F));
+    } else if (cp <= 0xFFFF)
+    {
+        *(dst++) = (char)(0xE0 | ((cp >> 12) & 0x0F));
+        *(dst++) = (char)(0x80 | ((cp >> 6) & 0x3F));
+        *(dst++) = (char)(0x80 | (cp & 0x3F));
+    } else if (cp <= 0x10FFFF)
+    {
+        *(dst++) = (char)(0xF0 | ((cp >> 18) & 0x07));
+        *(dst++) = (char)(0x80 | ((cp >> 12) & 0x3F));
+        *(dst++) = (char)(0x80 | ((cp >> 6) & 0x3F));
+        *(dst++) = (char)(0x80 | (cp & 0x3F));
+    }
+}
+#endif
+
+inline ROString unescapeInPlace(char * buf, unsigned start, unsigned end)
+{
     // Already decoded ?
     if (buf[start-1] == '\0') return ROString(&buf[start]); // The actual string size is unknown here, so need to scan for 0
     if (buf[start-1] == '!') return ROString(); // Error
 
     // Decode the string... it is valid utf8... so no worries
     char * dst = &buf[start];
-    for (const char * src = dst, *last = &buf[end]; src != last; src++)
+#ifdef UnescapeUnicode
+    uint32_t highSurrogatePair = 0;
+#endif
+    for (const char * src = dst, *last = &buf[end]; src < last; src++)
     {
         if (*src & 0x80)
         {   // Extract utf8 as-is
@@ -39,7 +72,35 @@ ROString TokenT<IndexType>::unescape(char * buf)
                 case 'n': *(dst++) = '\n'; break;
                 case 'r': *(dst++) = '\r'; break;
                 case 't': *(dst++) = '\t'; break;
+                case '/': *(dst++) = '/' ; break;
+#ifdef UnescapeUnicode
+                case 'u': // Unicode expect 4 hexadecimal values here, but it's a common error to have less
+                {
+                    uint32_t u = 0;
+                    for (char i = 0; i < 4; i++)
+                    {
+                        if ((src+2) == last) break;
+                        char h = *(src+2);
+                        if (!isHex(h)) break;
+                        u = (u << 4) | fromHex(h);
+                        ++src;
+                    }
+                    // Check surrogate pairs first
+                    if (u >= 0xD800 && u <= 0xDFFF)
+                    {
+                        if (!highSurrogatePair) highSurrogatePair = u;
+                        else
+                        {
+                            // Decode pair to codepoint
+                            u = 0x10000 + ((uint32_t)(highSurrogatePair - 0xD800) << 10) + (u - 0xDC00);
+                            highSurrogatePair = 0;
+                            toUTF8(u, dst);
+                        }
+                    } else toUTF8(u, dst);
 
+                    break;
+                }
+#endif
                 // Decode next as if it was unescaped
                 default: *(dst++) = *(src + 1); break;
             }
@@ -47,8 +108,12 @@ ROString TokenT<IndexType>::unescape(char * buf)
             src++;
             continue;
         }
+#ifdef UnescapeUnicode
+        // Invalid Unicode point with only a high surrogate pair and no low pair after it
+        else if (highSurrogatePair) highSurrogatePair = 0;
+#endif
 
-    	*(dst++) = *src;
+        *(dst++) = *src;
     }
     *dst = '\0';
 
@@ -81,7 +146,7 @@ IndexType JSONT<IndexType>::match(const char * in, const IndexType len, Token & 
     return Starving;
 }
 
-// Parse the given primitive 
+// Parse the given primitive
 template <typename IndexType>
 IndexType JSONT<IndexType>::parsePrimitive(const char * in, const IndexType len, Token & token)
 {
@@ -286,7 +351,7 @@ IndexType JSONT<IndexType>::getCurrentContainerCount(const char * in, const Inde
     IndexType count = 0;
 
     IndexType bracketCount = isArr, blockCount = isObj;
-    // The algorithm here is quite simple 
+    // The algorithm here is quite simple
     // Depending on the current token state (array or object), we count the number of bracket or block
     // until we exit the current object or array. We skip everything while in the string mode.
     bool inTxt = false, escaped = false;
@@ -296,7 +361,7 @@ IndexType JSONT<IndexType>::getCurrentContainerCount(const char * in, const Inde
         if (c == ' ' || c == '\n' || c == '\r' || c == '\t') {
             continue;
         } else if (inTxt) {
-            if (!escaped && c == '"') { 
+            if (!escaped && c == '"') {
                 inTxt = false;
             }
             else if (!escaped && c == '\\') {
@@ -313,7 +378,7 @@ IndexType JSONT<IndexType>::getCurrentContainerCount(const char * in, const Inde
             }
 
             if (c == '"') {
-                inTxt = true; 
+                inTxt = true;
             } else if (c == '{') {
                 blockCount++;
             } else if (c == '}') {
@@ -327,7 +392,7 @@ IndexType JSONT<IndexType>::getCurrentContainerCount(const char * in, const Inde
             } else if (c == ',') {
                 if (isObj && blockCount == 1 && bracketCount == 0) count++;
                 else if (isArr && bracketCount == 1 && blockCount == 0) count++;
-            } 
+            }
         }
     }
     return count;
@@ -344,7 +409,7 @@ IndexType JSONT<IndexType>::parseOne(const char * in, const IndexType len, Token
     if (pos == 0) { next = InvalidPos; lastSuper = InvalidPos; }
 
     if (pos >= len)        return rememberLastError(Starving);
-    for (; pos < len; pos++) 
+    for (; pos < len; pos++)
     {
         c = in[pos];
 
@@ -416,7 +481,7 @@ IndexType JSONT<IndexType>::parseOne(const char * in, const IndexType len, Token
             break;
         default:
             if (state != ExpectValue)       return rememberLastError(Invalid);
-            
+
             token.init(Token::Number, super, pos, 0); // Set number by default and fix up if not a number
             tk = parsePrimitive(in, len, token);
             if (tk != 0)                    return rememberLastError(tk);
@@ -426,7 +491,7 @@ IndexType JSONT<IndexType>::parseOne(const char * in, const IndexType len, Token
             break;
         }
         if (skip) { skip = false; continue; }
-        
+
         pos++;
         return rememberLastError(OneTokenFound);
     }
@@ -515,7 +580,7 @@ IndexType JSONT<IndexType>::partialParse(char * in, IndexType & len, Token * tok
     }
     if (partialState == NeedRefill)
         return parse(in, len, tokens, tokenCount);
-    
+
     return 0;
 }
 #endif

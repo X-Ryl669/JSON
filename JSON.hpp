@@ -3,6 +3,7 @@
 
 #ifdef UnescapeJSON
 #include "ROString.hpp"
+ROString unescapeInPlace(char * in, unsigned start, unsigned end);
 #endif
 
 
@@ -50,11 +51,11 @@ struct TokenT
 #ifdef UnescapeJSON
     /** Unescape the string (or key).
         This modifies the given input buffer to make it a valid zero terminated string */
-    ROString unescape(char * in);
+    inline ROString unescape(char * in) { if (type != String && type != Key) return ROString(); return unescapeInPlace(in, start, end); }
 #endif
 };
 
-/** Specialized version for embedded system limited to JSON size less than 32kB. 
+/** Specialized version for embedded system limited to JSON size less than 32kB.
     The token memory footprint should fit in 64bits/8 bytes only.
     The hierarchy depth is limited to 4095 recursively embedded objects */
 template <>
@@ -77,14 +78,14 @@ struct TokenT<signed short>
     unsigned short   id   : 12;
     /** The token type */
     unsigned short   type : 4;
-    
+
     union
     {
         /** The token parent index or state if using parseOne */
         signed short       parent;
         /** When using the SAX parser, contains the state (refer to JSON::SAXState) for value */
         signed short       state;
-    };    
+    };
     /** The token start position */
     signed short   start;
     union
@@ -99,7 +100,7 @@ struct TokenT<signed short>
 #ifdef UnescapeJSON
     /** Unescape the string (or key).
         This modifies the given input buffer to make it a valid zero terminated string */
-    ROString unescape(char * in);
+    inline ROString unescape(char * in) { if (type != String && type != Key) return ROString(); return unescapeInPlace(in, start, end); }
 #endif
 };
 
@@ -107,25 +108,25 @@ struct TokenT<signed short>
 /** A SAX like JSON on-the-fly parser with no memory allocation while parsing.
     It's inspired by JSMM for working principle but is completely rewritten for C++
     and support partial parsing.
- 
+
     It was developped to fit a memory & flash constrained microcontroller, so many design
     choice are oriented toward saving binary size and memory.
- 
+
     It does not allocate any memory. It's deterministic.
     It's designed for stream parsing (that is, there is no limit to parse end of "logical end")
     It checks the JSON syntax, but accept few invalid constructions:
     - "{}{}" : it'll stop on the first object declaration but not return an error since it hasn't seen the other object.
     - "[123.E232-23++34.24...2424]": Since number are not converted, this will be accepted as an array containing a number.
- 
+
     By default, it does not modify its input and work-in-place.
     It does not convert/unescape strings unless you define UnescapeJSON (in that case, the input text
     is modified to store 0 at strings' ends)
-    Even in that case, it does not convert unicode escaped chars (\uABCD) to UTF-8 (usually, this
-    is not required since such strings can be returned untouched).
+    Even in that case, it does not convert unicode escaped chars (\uABCD) to UTF-8 unless you define UnescapeUnicode
+    (usually, this is not required since such strings can be returned untouched).
     It does not convert textual number to native number (you can use atoi/atof like functions yourself).
     It tags all objects and arrays with a unique identifier (useful for partial parsing, see below).
     Such identifier is limited to 4095 possible values (before wrap around).
- 
+
     Except for the limitations above, it should be very fast to parse and with minimal code size.
     (On my machine complete code compiles to less than 2.5kB)
 
@@ -135,13 +136,13 @@ struct TokenT<signed short>
     This feature works mostly in zero-copy mode (it works on the input buffer, with no allocation).
     Typically, that's good if you're receiving data from a socket and don't have enough buffers/memory to
     accumulate the complete JSON text before parsing.
- 
+
     Partial parsing is a feature that's almost as big as the parse method in binary so if you don't need it
     you either define SkipJSONPartialParsing, or build with "-ffunction-sections -fdata-sections -Wl,-gc-sections"
     flags so the linker will garbage collect the function.
     This removes 800 bytes from the compiled binary on my machine.
     The function is logically written so it resumes after the initial parse function returned Starving error.
- 
+
     A partial parsing rewrites the token stream so the object hierarchy to the last values (with key if available) found is kept valid
     but all previous values (opt. keys) are removed. For ease of use reasons, if the parsing stopped in the middle of a a key/value pair,
     the token stream will contains the last key the (interrupted and resumed) value refers to.
@@ -149,23 +150,23 @@ struct TokenT<signed short>
     Since object and arrays are identified, you can also figure out in which object the key/value refers to by
     remembering the container's ID. Try to accumulate as much data as possible before calling partialParsing,
     since this rewriting is computation expensive, so avoid to do that for each byte received.
- 
+
     The default implementation limits input JSON size to signed 16 bits (32768 bytes), and less than 4095 embedded
     objects/arrays.
     If you intend to parse more than that, you'll need to define IndexType to a larger **signed** type.
     The Token's size is, by default, 8 bytes long. Using signed 32 bits int for the IndexType will double it's size.
     The parser memory size is 10 bytes by default. It requires less than a hundred bytes of stack space.
- 
+
     Because I got the question, you can not write a JSON stream with any parser and even more with this one.
     Writing small JSON is trivial, but it's not the subject of this class.
- 
+
     There is no dependency on STL, and no exceptions either.
-    Only memmove is used in partialParsing for ensuring the previous key is present in the new stream to parse. 
-    
-    If you only need a SAX parser, that is, you don't want to allocate a token stream beforehand, then you 
-    can call the parseOne method instead. This method will extract one token and return it. You'll call it again until 
-    the first object is done parsing. 
-    
+    Only memmove is used in partialParsing for ensuring the previous key is present in the new stream to parse.
+
+    If you only need a SAX parser, that is, you don't want to allocate a token stream beforehand, then you
+    can call the parseOne method instead. This method will extract one token and return it. You'll call it again until
+    the first object is done parsing.
+
     @param IndexType    Must be signed */
 template <typename IndexTypeT>
 struct JSONT
@@ -261,19 +262,19 @@ struct JSONT
         JSON::IndexType tokenUsed = j.parse(in, strlen(in), tokens, MaxTokenCount);
         if (tokenUsed > 0) {
             // Work with the "tokenUsed" tokens
-        } else { 
+        } else {
            switch (tokenUsed) {
                case NotEnoughToken: // Realloc the token stream larger
                case Invalid: // Bad luck it's invalid JSON, look at j.pos for where it failed
                case Starving: // Use partialParse or wait until in contains the complete JSON object
                case NeedRefill: // Used internally by partialParse to tell you to continue filling input buffer
             }
-        } 
+        }
         @endcode */
     IndexType parse(const char * in, const IndexType len, Token * tokens, const IndexType tokenCount);
 
-    /** Parse a single token from the input stream. 
-        Please don't change the input stream between calls. 
+    /** Parse a single token from the input stream.
+        Please don't change the input stream between calls.
         @param in           The text buffer to parse.
         @param len          The size of the text buffer in bytes.
         @param tokens       The tokens buffer to store into
@@ -304,17 +305,17 @@ struct JSONT
         @warning This method does not fill the parent object/array when finding a child object. It does not set the elementsCount, nor the token.id */
     IndexType parseOne(const char * in, const IndexType len, Token & token, IndexType & lastSuper);
 
-    /** When using the SAX parser, it's not usually possible to know the number of element in an array or object 
-        before parsing it completely. This leads to suboptimal client code that must rely on dynamic structures (like 
+    /** When using the SAX parser, it's not usually possible to know the number of element in an array or object
+        before parsing it completely. This leads to suboptimal client code that must rely on dynamic structures (like
         linked list or dynamic array) that stresses the heap allocator (an 8 bytes list's item usually hides at least 8 bytes
         of overhead in the heap algorithm to track the allocation).
-        So to ease the allocation of a single array sized for the element counts, we provide this method that counts the 
-        elements. It swaps parsing time for convenience (since the data will be parsed twice, but with a faster algorithm).  
-        
-        It doesn't modify the current parsing state and position. 
+        So to ease the allocation of a single array sized for the element counts, we provide this method that counts the
+        elements. It swaps parsing time for convenience (since the data will be parsed twice, but with a faster algorithm).
+
+        It doesn't modify the current parsing state and position.
         It only work if the parser is in an 'Entering' state (else, returns 0).
-        
-        This is a O(N) operation (up to the end of the container, so it can be as large as the whole file if you count the 
+
+        This is a O(N) operation (up to the end of the container, so it can be as large as the whole file if you count the
         members of the root object) so try to limit this to small objects for efficiency */
     IndexType getCurrentContainerCount(const char * in, const IndexType len, const Token & token);
 
