@@ -53,11 +53,6 @@ inline ROString unescapeInPlace(char * buf, unsigned start, unsigned end)
 #endif
     for (const char * src = dst, *last = &buf[end]; src < last; src++)
     {
-        if (*src & 0x80)
-        {   // Extract utf8 as-is
-            while (*src & 0x80)	*(dst++) = *(src++);
-            continue;
-        }
 
         // This can not happen unescaped
         if (*src == '"') { buf[start - 1] = '!'; return ROString(); }
